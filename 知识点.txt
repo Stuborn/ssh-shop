@@ -1,0 +1,300 @@
+未做:admin/adminuser 用户的增删改查
+	admin/product/edit  商品的修改 删除
+	admin/caegorysecond/edit.jsp  二级分类的修改 删除
+	
+
+
+
+
+
+
+
+
+1.<!-- 配置关联关系 -->
+ * order-by="csid":让set有序显示
+ *  lazy="false"：取消延迟加载，session已经关闭。还可以扩大session范围。
+		<set name="categorySeconds" order-by="csid" lazy="false">
+			<key column="cid"/>
+			<one-to-many class="cn.itcast.shop.categorysecond.CategorySecond"/>
+		</set>
+		
+2.action向页面传值：
+  *	 private List<Product> hotList;
+	 public List<Product> getHotList() {
+		return hotList;
+	}
+		hotList = productService.findHot();
+  *	List<Category> categoryList = categoryService.findAll();
+		// 获得值栈:
+		ActionContext.getContext().getValueStack()
+				.set("categoryList", categoryList);	
+				
+3.Hibernate分页查询
+  *自写一个util工具 PageHibernateCallback实现HibernateCallback接口
+	private String hql;
+	private Object[] params;
+	private int startIndex;
+	private int pageSize;
+	写带4个参数的构造方法
+	重写方法doInHibernate
+4.页面中分页显示	
+   *写一个PageBean对象类
+ public class  PageBean<T> {
+	private Integer page;// 当前页数.
+	private Integer limit;// 每页显示记录数
+	private Integer totalCount;// 总记录数
+	private Integer totalPage;// 总页数.
+	private List<T> list; // 显示到浏览器的数据.
+
+Action:
+		PageBean<Order> pageBean = orderService.findByPage(page);
+		// 将PageBean的数据保存到页面:
+		ActionContext.getContext().getValueStack().set("pageBean", pageBean);
+		
+Service:
+		PageBean<Order> pageBean = new PageBean<Order>();
+		// 封装分页类的数据:
+		// 设置当前页数
+		pageBean.setPage(page);
+		// 设置每页显示的记录数:
+		Integer limit = 10;
+		pageBean.setLimit(limit);
+		// 设置总记录数:
+		Integer totalCount = orderDao.findCount();
+		pageBean.setTotalCount(totalCount);
+		// 设置总页数:
+		Integer totalPage = 0;
+		if(totalCount % limit == 0){
+			totalPage = totalCount / limit;
+		}else{
+			totalPage = totalCount / limit+1;
+		}
+		pageBean.setTotalPage(totalPage);
+		// 设置每页显示的数据:
+		Integer begin = (page - 1) * limit;
+		List<Order> list = orderDao.findByPage(begin,limit);
+		pageBean.setList(list);
+
+Dao:
+		public List<Order> findByPage(Integer begin, Integer limit) {
+		String hql = "from Order order by ordertime desc";
+		List<Order> list = this.getHibernateTemplate().executeFind(new PageHibernateCallback<Order>(hql, null, begin, limit));
+		return list;
+
+5.插入datetime类型的字段报如下错误：
+	Caused by: com.mysql.jdbc.MysqlDataTruncation: 
+	Data truncation: Incorrect datetime value
+解决方法：将驱动由mysql-connector-java-5.0.3-bin.jar
+	更新为mysql-connector-java-5.1.10-bin.jar 问题解决。		
+	
+	
+6. 更改jdbc.properties的连接数据库密码		
+   MailUtils里的发邮件的ip地址 47.1
+   
+ 7.
+ applicationContext.xml
+	<bean id="userservice" class="com.tre.serviceImpl.UserServiceImpl">
+	<property name="userdao" ref="userdao"></property>
+	</bean>
+
+	userServiceImpl
+	{		
+		private UserDao userdao;
+		public void setUserdao(UserDao userdao) {
+		this.userdao = userdao;
+		}
+	}
+	 property中的name="userdao" 必须和userServiceImpl中的private UserDao userdao一致
+
+
+8.通过id去查询详细信息时，bean对象只有一个id值，其他的值为空，所以不能通过%{user.name}获得值
+   而是通过 getmodel方法  %{model.name}获取值
+   user = service.findById(user.getUserID());
+
+9.jsp中要传值的属性的标签的name要与javabean中的name一致
+	<input type="text" name="cname" value="" />
+	private String cname;
+	private Integer cid; 
+	<a href="/category_delete.action?cid=<s:property value="#c.cid"/>">
+
+
+10.级联删除的时候，必须先查询再删除。不然集合中没有数据
+	<set name="categorySeconds" order-by="csid" cascade="delete" lazy="false">
+	
+	public void delete(Category category) {
+		category = this.getHibernateTemplate().get(Category.class, category.getCid());
+		this.getHibernateTemplate().delete(category);
+	}
+	
+11.文件上传	
+	<input type="file" name="upload"
+	// 文件上传需要的三个属性:
+	private File upload;	// 上传文件，与页面上file组件的name对应
+	private String uploadContentType; // 上传文件的MIME类型
+	private String uploadFileName; // 上传文件名称
+  然后提供set方法
+   		// 文件上传的操作:
+		// 获得上传的路径:
+		String path = ServletActionContext.getServletContext().getRealPath("/products");
+		String realPath = path+"/"+csid+"/"+uploadFileName;
+		File diskFile = new File(realPath);
+		// 文件上传:
+		FileUtils.copyFile(upload, diskFile);
+	
+		// 设置图片上传路径:
+		product.setImage("products/"+csid+"/"+uploadFileName);
+		        
+		// 调用Serviec保存商品:
+		productService.save(product);
+	对于页面中没有上传的属性（或与javabean中的属性名不一致的）
+	  如：csid（页面中属性名） categorySecond（javabean中属性名） 	
+	  	pdate，Image（页面中没有该属性）
+	  	自己手动绑定值
+	  	// 设置二级分类
+		CategorySecond categorySecond = new CategorySecond();
+		categorySecond.setCsid(csid);
+		product.setCategorySecond(categorySecond);
+		// 设置时间:
+		product.setPdate(new Date());    
+		// 设置图片上传路径:
+		product.setImage("products/"+csid+"/"+uploadFileName);
+		        
+12.HQL中 表名对应的是javabean的名称(大小写区分)
+	<class name="cn.itcast.shop.user.User" table="user">
+	"from User where username = ?"	
+	
+	
+13.多条件查询
+	hql += "and sex = ? ";
+	list.add(user.getSex());
+
+    list<String>转Stirng[] 	
+    	String[] arr = list.toArray(new String[list.size()]);	
+    	
+14.文件上传，下载
+	private File upload;
+	private String uploadContentType;
+	private String uploadFileName; // 真实文件名
+		
+	上传：	<s:file name="upload" size="30" id="userAction_save_do_upload"/>
+			if (upload != null) {
+				String uuidName = UUID.randomUUID().toString();
+				String path = "/WEB-INF/upload/" + uuidName;
+				File destFile = new File(ServletActionContext.getServletContext()
+							.getRealPath(path));
+				FileUtils.copyFile(upload, destFile);
+
+				// 接收员工数据
+				// 在user 保存 uuid文件路径 和 真实文件名
+				user.setPath(path);
+				user.setFilename(uploadFileName);
+		}
+		userService.add(user);
+		
+		
+		if (upload == null) {
+			// 员工没有上传 新简历
+			// 修改简历之外其他字段
+			userService.edit(user);
+		} else {
+			// 员工修改了简历
+			// 替换原有简历，数据表修改简历相关信息
+			// 1、上传新简历
+			String uuidName = UUID.randomUUID().toString();
+			String path = "/WEB-INF/upload/" + uuidName;
+			File destFile = new File(ServletActionContext.getServletContext()
+					.getRealPath(path));
+			FileUtils.copyFile(upload, destFile);
+
+			// 接收员工数据
+			// 在user 保存 uuid文件路径 和 真实文件名
+			user.setPath(path);
+			user.setFilename(uploadFileName);
+			// 2、如果之前上传过简历，删除旧简历
+			User oldUser = userService.findById(user.getUserID());
+			if (oldUser.getPath()!=null) {
+				File oldFile = new File(ServletActionContext.getServletContext()
+						.getRealPath(oldUser.getPath()));
+				oldFile.delete();
+			}
+			// 3、修改员工信息
+			userService.edit(user);   
+			
+	下载：      <s:a action="user_download" namespace="/" cssClass="cl_01">
+				<s:param name="userID" value="model.userID"></s:param>
+				<s:property value="model.filename"/>
+			</s:a> 
+			
+			<result name="downloadSUCCESS" type="stream">
+				<!-- 下载流 getInputStream -->
+				<param name="contentType">${contentType}</param>
+				<param name="contentDisposition">attachment;filename=${downloadFilename}</param>
+			</result>		
+			
+			/**
+		 * 下载简历 (struts2 下载 一个流、 两个头信息)
+		 * 
+		 * @return
+		 */
+		public String download() {
+			user = userService.findById(user.getUserID());
+	
+			return "downloadSUCCESS";
+		}
+	
+		// 返回文件流
+		public InputStream getInputStream() throws IOException {
+			if (user == null || user.getPath() == null) {
+				return null;
+			}
+			File file = new File(ServletActionContext.getServletContext()
+					.getRealPath(user.getPath()));
+			return new FileInputStream(file);
+		}
+	
+		// 返回简历 MIME类型
+		public String getContentType() {
+			if (user == null || user.getFilename() == null) {
+				return null;
+			}
+			return ServletActionContext.getServletContext().getMimeType(
+					user.getFilename());
+		}
+	
+		// 返回编码后的文件名
+		public String getDownloadFilename() throws IOException {
+			if (user == null || user.getFilename() == null) {
+				return null;
+			}
+			return encodeDownloadFilename(user.getFilename(), ServletActionContext
+					.getRequest().getHeader("user-agent"));
+		}
+	
+		/**
+		 * 下载文件时，针对不同浏览器，进行附件名的编码
+		 * 
+		 * @param filename
+		 *            下载文件名
+		 * @param agent
+		 *            客户端浏览器
+		 * @return 编码后的下载附件名
+		 * @throws IOException
+		 */
+		public String encodeDownloadFilename(String filename, String agent)
+				throws IOException {
+			if (agent.contains("Firefox")) { // 火狐浏览器
+				filename = "=?UTF-8?B?"
+						+ new BASE64Encoder().encode(filename.getBytes("utf-8"))
+						+ "?=";
+			} else { // IE及其他浏览器
+				filename = URLEncoder.encode(filename, "utf-8");
+			}
+			return filename;
+		}
+			
+
+15.编辑一个类时，跳转到了edit.jsp后 要添加一个
+<input type="hidden" name="csid" value="<s:property value="model.csid"/>"/>
+获取到model
+    	
+		
